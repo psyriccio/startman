@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# color constants ###############################################################################################
+NC='\033[0m'; RED='\033[0;31m'; YEL='\033[1;33m'; WHT='\033[1;37m'; BLA='\033[0;30m'; DGRA='\033[1;30m'
+BLU='\033[0;34m'; LBLU='\033[1;34m'; GRN='\033[0;32m'; LGRN='\033[1;32m'; CYA='\033[0;36m'; LCYA='\033[1;36m'
+LRED='\033[1;31m'; PUR='\033[0;35m'; LPUR='\033[1;35m'; BRW='\033[0;33m'; LGRA='\033[0;37m'
+#################################################################################################################
+
+function exit_msg() {
+    printf "\n\n${LRED}$1${NC}\n\n"
+    exit_code=$(echo $1 | sum -s | awk '{ print $1 }')
+    exit $exit_code
+}
+
+function print_usage() {
+    printf "\n${WHT}usage: startman <command> [parameters...]${NC}\n\n"
+    printf "    ${WHT}startman list${NC} - list autostart entries\n"
+    printf "    ${WHT}startman add <name> <command>${NC} - create new autostart entry\n"
+    printf "    ${WHT}startman rm <name>${NC} - remove entry\n"
+    printf "    ${WHT}startman disable <name>${NC} - disable entry\n"
+    printf "    ${WHT}startman enable <name>${NC} - enable entry\n\n"
+}
+
+function get_entry_name(){
+    cat $1 | grep -E "^Name\=[^\[].*" | sed -e 's/Name\=//g'
+}
+
+function get_entry_state() {
+    cat $1 | grep -q -E "Hidden[[:space:]]*\=[[:space:]]*true.*"
+    state=$?
+    echo $state
+}
+
+function get_entry_command() {
+    cat $1 | grep -E "^Exec\=[^\[].*" | sed -e 's/Exec\=//g'
+}
+
+if [[ -z $1 ]]; then
+    print_usage
+    exit 0
+fi
+
+if [[ $1 != "list" ]] && [[ $1 != "add" ]] && [[ $1 != "rm" ]] &&\
+    [[ $1 != "disable" ]] && [[ $1 != "enable" ]]; then
+    print_usage
+    error_msg "Error in command line"
+fi
+
+if [[ $1 == "list" ]]; then
+    list=""
+    for i in $(find ~/.auto/ -name "*.desktop"); do
+        ent_name=$(get_entry_name $i)
+        ent_stat=$(get_entry_state $i)
+        ent_comm=$(get_entry_command $i)
+        if (($ent_stat == 0)); then
+            ent_stat_str="disabled"
+            item="${BRW}${ent_name}${NC}|${BRW}${ent_stat_str}${NC}|${BRW}${ent_comm}${NC}\n"
+        else
+            ent_stat_str="enabled"
+            item="${LGRN}${ent_name}${NC}|${LGRN}${ent_stat_str}${NC}|${LGRN}${ent_comm}${NC}\n"
+        fi
+        empty_list=0
+        list=$list$item
+    done;
+    if [[ -z $list ]]; then
+        printf "\n${DGRA}   ...no entries present...   ${NC}\n\n"
+    else
+        #printf "${WHT}name${NC}|${WHT}state${NC}\n$list\n"
+        printf "\n${WHT}name${NC}|${WHT}state${NC}|${WHT}command${NC}\n$list\n" | awk -F'|' '{ printf "%-25s %-25s %-25s \n", $1, $2, $3 }'
+    fi
+fi
+
+if [[ $1 == "add" ]]; then
+    printf "Creating entry $2 for '$3'\n"
+    dex -c $3 ~/.auto/"$2.desktop"
+    sed -i -e "s/Name\=.*/Name=$2/g" ~/.auto/"$2.desktop"
+fi
+
+if [[ $1 == "rm" ]]; then
+    fname=~/.auto/"$2.desktop"
+    if [ ! -f $fname ]; then
+        exit_msg "Cant remove entry, file not founded"
+    fi
+    cat $fname | grep -q -E "Name\=$2"
+    if (( $? > 0 )); then
+        exit_msg "Cant remove entry, name missmatch"
+    fi
+    rm -f $fname
+    if [ -f $fname ]; then
+        exit_msg "Cant remove entry, operation not permited"
+    fi
+    printf "Entry $2 removed\n\n"
+fi
